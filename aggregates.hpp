@@ -6,13 +6,13 @@
 //#include <SFML/System/Clock.hpp>
 
 template<typename T>
-vec2f tget_pos(T& in)
+vec2f tget_pos(const T& in)
 {
     return in.get_pos();
 }
 
 template<typename T>
-vec2f tget_dim(T& in)
+vec2f tget_dim(const T& in)
 {
     return in.get_dim();
 }
@@ -25,6 +25,18 @@ vec2f tget_pos(T* in)
 
 template<typename T>
 vec2f tget_dim(T* in)
+{
+    return in->get_dim();
+}
+
+template<typename T>
+vec2f tget_pos(const std::shared_ptr<T>& in)
+{
+    return in->get_pos();
+}
+
+template<typename T>
+vec2f tget_dim(const std::shared_ptr<T>& in)
 {
     return in->get_dim();
 }

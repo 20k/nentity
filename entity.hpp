@@ -4,6 +4,7 @@
 #include <vec/vec.hpp>
 #include <networking/serialisable_fwd.hpp>
 #include "aggregates.hpp"
+#include <memory>
 
 namespace sf
 {
@@ -92,9 +93,9 @@ struct entity : serialisable, owned
     entity_manager* get_parent();
     entity_manager* parent = nullptr;
 
-    void set_parent_entity(entity* en, vec2f absolute_position);
+    /*void set_parent_entity(entity* en, vec2f absolute_position);
     entity* parent_entity = nullptr;
-    vec2f parent_offset = {0,0};
+    vec2f parent_offset = {0,0};*/
 
     ///for aggregates
     vec2f get_pos();
@@ -117,8 +118,8 @@ bool collides(entity& e1, entity& e2);
 
 struct entity_manager : serialisable
 {
-    std::vector<entity*> entities;
-    std::vector<entity*> to_spawn;
+    std::vector<std::shared_ptr<entity>> entities;
+    std::vector<std::shared_ptr<entity>> to_spawn;
 
     static inline size_t gid = 0;
     uint32_t iteration = 0;
@@ -128,12 +129,12 @@ struct entity_manager : serialisable
     int last_aggregated = 0;
     bool any_moving = false;
 
-    all_aggregates<aggregate<entity*>> collision;
+    all_aggregates<aggregate<std::shared_ptr<entity>>> collision;
 
     template<typename T, typename... U>
-    T* make_new(U&&... u)
+    std::shared_ptr<T> make_new(U&&... u)
     {
-        T* e = new T(std::forward<U>(u)...);
+        std::shared_ptr<T> e = std::make_shared<T>(std::forward<U>(u)...);
 
         to_spawn.push_back(e);
         e->parent = this;
@@ -142,9 +143,9 @@ struct entity_manager : serialisable
     }
 
     template<typename T>
-    T* take(const T& in)
+    std::shared_ptr<T> take(const T& in)
     {
-        T* e = new T(in);
+        auto e = std::make_shared<T>(in);
 
         to_spawn.push_back(e);
         e->parent = this;
@@ -153,35 +154,41 @@ struct entity_manager : serialisable
     }
 
     void forget(entity* in);
-    void steal(entity* in);
+    void forget(std::shared_ptr<entity> in);
+    void steal(std::shared_ptr<entity> in);
 
+    ///dynamic_pointer_cast
     template<typename T>
-    std::vector<T*> fetch()
+    std::vector<std::shared_ptr<T>> fetch()
     {
-        std::vector<T*> ret;
+        std::vector<std::shared_ptr<T>> ret;
 
         for(auto& i : entities)
         {
-            if(dynamic_cast<T*>(i))
+            auto nptr = std::dynamic_pointer_cast<T>(i);
+
+            if(nptr)
             {
-                ret.push_back((T*)i);
+                ret.push_back(nptr);
             }
         }
 
         for(auto& i : to_spawn)
         {
-            if(dynamic_cast<T*>(i))
+            auto nptr = std::dynamic_pointer_cast<T>(i);
+
+            if(nptr)
             {
-                ret.push_back((T*)i);
+                ret.push_back(nptr);
             }
         }
 
         return ret;
     }
 
-    std::optional<entity*> fetch(uint32_t id)
+    std::optional<std::shared_ptr<entity>> fetch(uint32_t id)
     {
-        for(entity* e : entities)
+        for(auto& e : entities)
         {
             if(e->_pid == id)
                 return e;
@@ -191,13 +198,14 @@ struct entity_manager : serialisable
     }
 
     bool contains(entity* e);
+    bool contains(std::shared_ptr<entity> e);
 
     void tick(double dt_s, bool reaggregate = true);
 
     void render(camera& cam, sf::RenderWindow& window);
     void render_layer(camera& cam, sf::RenderWindow& window, int layer);
 
-    std::optional<entity*> collides_with_any(vec2f centre, vec2f dim, float angle);
+    std::optional<std::shared_ptr<entity>> collides_with_any(vec2f centre, vec2f dim, float angle);
 
     void force_spawn();
 

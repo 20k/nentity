@@ -558,13 +558,13 @@ bool entity::point_within(vec2f point)
     return false;
 }
 
-void entity::set_parent_entity(entity* en, vec2f absolute_position)
+/*void entity::set_parent_entity(entity* en, vec2f absolute_position)
 {
     assert(en);
 
     parent_entity = en;
     parent_offset = absolute_position - en->r.position;
-}
+}*/
 
 vec2f entity::get_pos()
 {
@@ -587,7 +587,7 @@ void entity_manager::forget(entity* in)
 
     for(int i=0; i < (int)entities.size(); i++)
     {
-        if(entities[i] == in)
+        if(entities[i].get() == in)
         {
             entities.erase(entities.begin() + i);
             i--;
@@ -597,7 +597,7 @@ void entity_manager::forget(entity* in)
 
     for(int i=0; i < (int)to_spawn.size(); i++)
     {
-        if(to_spawn[i] == in)
+        if(to_spawn[i].get() == in)
         {
             to_spawn.erase(to_spawn.begin() + i);
             i--;
@@ -606,7 +606,12 @@ void entity_manager::forget(entity* in)
     }
 }
 
-void entity_manager::steal(entity* in)
+void entity_manager::forget(std::shared_ptr<entity> in)
+{
+    forget(in.get());
+}
+
+void entity_manager::steal(std::shared_ptr<entity> in)
 {
     assert(in->parent);
 
@@ -625,17 +630,22 @@ bool entity_manager::contains(entity* e)
 {
     for(auto& i : entities)
     {
-        if(i == e)
+        if(i.get() == e)
             return true;
     }
 
     for(auto& i : to_spawn)
     {
-        if(i == e)
+        if(i.get() == e)
             return true;
     }
 
     return false;
+}
+
+bool entity_manager::contains(std::shared_ptr<entity> e)
+{
+    return contains(e.get());
 }
 
 void entity_manager::tick(double dt_s, bool reaggregate)
@@ -644,20 +654,29 @@ void entity_manager::tick(double dt_s, bool reaggregate)
 
     auto last_entities = entities;
 
-    for(entity* e : last_entities)
+    for(std::shared_ptr<entity> e : last_entities)
     {
+        if(e->cleanup)
+            continue;
+
         e->tick(dt_s);
     }
 
-    for(entity* e : last_entities)
+    for(std::shared_ptr<entity> e : last_entities)
     {
+        if(e->cleanup)
+            continue;
+
         e->tick_pre_phys(dt_s);
     }
 
     any_moving = false;
 
-    for(entity* e : last_entities)
+    for(std::shared_ptr<entity> e : last_entities)
     {
+        if(e->cleanup)
+            continue;
+
         e->tick_phys(dt_s);
 
         ///done here because its the last bulk operation done
@@ -755,8 +774,11 @@ void entity_manager::tick(double dt_s, bool reaggregate)
 
         #define HALF_RECTS
         #ifdef HALF_RECTS
-        for(entity* e1 : entities)
+        for(std::shared_ptr<entity> e1 : entities)
         {
+            if(e1->cleanup)
+                continue;
+
             if(!e1->collides)
                 continue;
 
@@ -785,8 +807,11 @@ void entity_manager::tick(double dt_s, bool reaggregate)
                     if(!rect_intersect(fine.tl, fine.br, tl, br))
                         continue;
 
-                    for(entity* e2 : fine.data)
+                    for(std::shared_ptr<entity> e2 : fine.data)
                     {
+                        if(e2->cleanup)
+                            continue;
+
                         if(!e2->is_collided_with)
                             continue;
 
@@ -825,6 +850,9 @@ void entity_manager::tick(double dt_s, bool reaggregate)
     {
         for(int i=0; i < (int)last_entities.size(); i++)
         {
+            if(last_entities[i]->cleanup)
+                continue;
+
             if(!last_entities[i]->collides)
                 continue;
 
@@ -833,6 +861,9 @@ void entity_manager::tick(double dt_s, bool reaggregate)
 
             for(int j = 0; j < (int)last_entities.size(); j++)
             {
+                if(last_entities[j]->cleanup)
+                    continue;
+
                 if(last_entities[j]->collides)
                 {
                     if(j <= i)
@@ -864,13 +895,13 @@ void entity_manager::tick(double dt_s, bool reaggregate)
         }
     }
 
-    for(entity* e : last_entities)
+    /*for(entity* e : last_entities)
     {
         if(e->parent_entity)
         {
             e->r.position = e->parent_entity->r.position + e->parent_offset;
         }
-    }
+    }*/
 
     force_spawn();
 
@@ -879,16 +910,22 @@ void entity_manager::tick(double dt_s, bool reaggregate)
 
 void entity_manager::render(camera& cam, sf::RenderWindow& window)
 {
-    for(entity* e : entities)
+    for(std::shared_ptr<entity> e : entities)
     {
+        if(e->cleanup)
+            continue;
+
         e->r.render(cam, window);
     }
 }
 
 void entity_manager::render_layer(camera& cam, sf::RenderWindow& window, int layer)
 {
-    for(entity* e : entities)
+    for(std::shared_ptr<entity> e : entities)
     {
+        if(e->cleanup)
+            continue;
+
         if(e->r.render_layer != layer && e->r.render_layer != -1)
             continue;
 
@@ -896,15 +933,18 @@ void entity_manager::render_layer(camera& cam, sf::RenderWindow& window, int lay
     }
 }
 
-std::optional<entity*> entity_manager::collides_with_any(vec2f centre, vec2f dim, float angle)
+std::optional<std::shared_ptr<entity>> entity_manager::collides_with_any(vec2f centre, vec2f dim, float angle)
 {
     entity test(temporary_owned{});
     test.r.init_rectangular(dim);
     test.r.position = centre;
     test.r.rotation = angle;
 
-    for(entity* e : entities)
+    for(std::shared_ptr<entity> e : entities)
     {
+        if(e->cleanup)
+            continue;
+
         if(collides(*e, test))
             return e;
     }
@@ -930,23 +970,26 @@ void entity_manager::force_spawn()
 ///only fully reaggregate on a spawn for the moment?
 void entity_manager::handle_aggregates()
 {
-    std::vector<entity*> my_entities;
+    std::vector<std::shared_ptr<entity>> my_entities;
     my_entities.reserve(entities.size());
 
-    for(entity* e : entities)
+    for(std::shared_ptr<entity> e : entities)
     {
+        if(e->cleanup)
+            continue;
+
         if((e->collides && e->is_collided_with) || e->aggregate_unconditionally)
         {
             my_entities.push_back(e);
         }
     }
 
-    all_aggregates<entity*> nsecond = collect_aggregates(my_entities, 10);
+    all_aggregates<std::shared_ptr<entity>> nsecond = collect_aggregates(my_entities, 10);
 
     collision.data.clear();
     collision.data.reserve(nsecond.data.size());
 
-    for(aggregate<entity*>& to_process : nsecond.data)
+    for(aggregate<std::shared_ptr<entity>>& to_process : nsecond.data)
     {
         collision.data.emplace_back(collect_aggregates(to_process.data, 10));
     }
@@ -978,7 +1021,7 @@ void entity_manager::partial_reaggregate(bool move_entities)
             ///for entities in fine
             for(auto entity_it = trf.data.begin(); entity_it != trf.data.end();)
             {
-                entity* e = *entity_it;
+                const std::shared_ptr<entity>& e = *entity_it;
 
                 float min_dist = FLT_MAX;
                 int nearest_fine = -1;
@@ -1070,9 +1113,9 @@ void entity_manager::partial_reaggregate(bool move_entities)
 
 void entity_manager::debug_aggregates(camera& cam, sf::RenderWindow& window)
 {
-    for(aggregate<aggregate<entity*>>& agg : collision.data)
+    for(aggregate<aggregate<std::shared_ptr<entity>>>& agg : collision.data)
     {
-        for(aggregate<entity*>& subagg : agg.data)
+        for(aggregate<std::shared_ptr<entity>>& subagg : agg.data)
         {
             vec2f rpos = cam.world_to_screen(subagg.pos, 1);
 
@@ -1118,14 +1161,14 @@ void entity_manager::cleanup()
 {
     force_spawn();
 
-    for(entity* e : entities)
+    /*for(std::shared_ptr<entity> e : entities)
     {
         if(e->parent_entity && e->parent_entity->cleanup)
         {
             e->cleanup = true;
             e->parent_entity = nullptr;
         }
-    }
+    }*/
 
     for(int i=0; i < (int)entities.size(); i++)
     {
@@ -1139,13 +1182,12 @@ void entity_manager::cleanup()
     {
         if(entities[i]->cleanup && entities[i]->cleanup_rounds == 2)
         {
-            entity* ptr = entities[i];
+            std::shared_ptr<entity> ptr = entities[i];
 
             entities.erase(entities.begin() + i);
 
             aggregates_dirty = true;
 
-            delete ptr;
             i--;
             continue;
         }
