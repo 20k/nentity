@@ -49,7 +49,7 @@ struct client_renderable : serialisable
     void insert(float dist, float angle, vec4f col);
 };
 
-struct entity : serialisable, owned
+struct entity : serialisable, owned, std::enable_shared_from_this<entity>
 {
     bool cleanup = false;
     int cleanup_rounds = 0;
