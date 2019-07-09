@@ -234,8 +234,12 @@ void client_renderable::render(camera& cam, sf::RenderWindow& window)
 
         float my_real_width = ov.length() * cam.zoom / z_level;
 
+        float col_frac = 1;
+
         if(my_real_width < 1)
         {
+            col_frac = my_real_width;
+
             ov = ov.norm() * (z_level / cam.zoom) * 1;
         }
 
@@ -257,7 +261,7 @@ void client_renderable::render(camera& cam, sf::RenderWindow& window)
         v[2].position = sf::Vector2f(v3.x(), v3.y());
         v[3].position = sf::Vector2f(v4.x(), v4.y());
 
-        sf::Color scol1 = sf::Color(lcol1.x(), lcol1.y(), lcol1.z(), lcol1.w());
+        sf::Color scol1 = sf::Color(lcol1.x(), lcol1.y(), lcol1.z(), lcol1.w() * col_frac);
         //sf::Color scol2 = sf::Color(lcol2.x(), lcol2.y(), lcol2.z(), lcol2.w());
 
         #ifdef PROGRESSIVE
