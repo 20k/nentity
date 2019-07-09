@@ -232,6 +232,13 @@ void client_renderable::render(camera& cam, sf::RenderWindow& window)
 
         vec2f ov = perp * scale * thickness;
 
+        float my_real_width = ov.length() * cam.zoom / z_level;
+
+        if(my_real_width < 1)
+        {
+            ov = ov.norm() * (z_level / cam.zoom) * 1;
+        }
+
         vec2f v1 = {l1.x() - ov.x()/2.f, l1.y() - ov.y()/2.f};
         vec2f v2 = {l2.x() - ov.x()/2.f, l2.y() - ov.y()/2.f};
         vec2f v3 = {l2.x() + ov.x()/2.f, l2.y() + ov.y()/2.f};
